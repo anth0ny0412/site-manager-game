@@ -5,17 +5,51 @@ import json
 
 # 1. 페이지 기본 설정
 st.set_page_config(page_title="건설 현장 소장 서바이벌", page_icon="🏗️", layout="centered")
-st.title("🏗️ 건설 현장 소장 서바이벌")
-st.subheader("모든 책임은 소장에게 있습니다. 현장을 무사히 준공시키세요!")
 
-# 2. API 키 설정 (스트림릿 클라우드의 Secrets 금고에서 가져옴)
+# 🎨 [디자인 요소] 커스텀 CSS 스타일링 추가
+st.markdown("""
+<style>
+    /* 상단 타이틀 배너 스타일 (건설 현장 느낌의 진한 네이비&블루) */
+    .title-banner {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+        color: white;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    /* 상황판 박스 스타일 */
+    .situation-box {
+        background-color: #fdfbf7;
+        border-left: 6px solid #ff9800;
+        padding: 20px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        font-size: 1.1rem;
+        color: #333;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# 멋진 타이틀 배너 출력
+st.markdown("""
+<div class='title-banner'>
+    <h2 style='color:white; margin-bottom:5px;'>🏗️ 건설 현장 소장 서바이벌</h2>
+    <p style='margin-bottom:0;'>모든 책임은 소장에게 있습니다. 냉철한 판단으로 현장을 완공하세요!</p>
+</div>
+""", unsafe_allow_html=True)
+
+
+# 2. API 키 설정 (비밀 금고에서 가져옴)
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 except KeyError:
     st.error("오류: Streamlit Secrets에 API 키가 설정되지 않았습니다.")
     st.stop()
 
-# 3. 모델 설정 (시공 순서 및 스포일러 금지 규칙 적용)
+# 3. 모델 설정 및 시스템 지침 (시공 순서 및 스포일러 금지 유지)
 generation_config = {
     "temperature": 0.7,
     "response_mime_type": "application/json",
@@ -63,25 +97,30 @@ if "history_data" not in st.session_state:
 if "turn_count" not in st.session_state:
     st.session_state.turn_count = 1
 if "current_event" not in st.session_state:
-    # 게임 시작 시 첫 공정 단계를 명시하여 요청
-    response = st.session_state.chat_session.send_message("게임을 시작해줘. 가설 및 토공사/기초공사 단계에 맞는 첫 번째 상황을 보고해.")
-    st.session_state.current_event = json.loads(response.text)
+    with st.spinner("현장 사무실을 세팅 중입니다..."):
+        response = st.session_state.chat_session.send_message("게임을 시작해줘. 가설 및 토공사/기초공사 단계에 맞는 첫 번째 상황을 보고해.")
+        st.session_state.current_event = json.loads(response.text)
 
-# 5. 게임 화면 UI 구성 (이미지 제거 및 텍스트 중심)
+# 5. 게임 화면 UI 구성
 event = st.session_state.current_event
 status = event["현재_상태"]
 
-# 상단 4가지 스탯 대시보드
-cols = st.columns(4)
+# 📊 시각적 공정률 바 (Progress Bar) 적용
+progress_val = status['공정률'] / 100.0
+# 공정률이 100을 넘지 않도록 처리
+progress_val = min(progress_val, 1.0) 
+st.progress(progress_val, text=f"📈 전체 공정 진행률: {status['공정률']}%")
+
+# 상단 3가지 핵심 스탯 대시보드
+cols = st.columns(3)
 cols[0].metric("💰 예산", f"{status['예산']}점")
 cols[1].metric("⛑️ 안전도", f"{status['안전도']}점")
 cols[2].metric("🏢 품질", f"{status['품질']}점")
-cols[3].metric("📈 공정률", f"{status['공정률']}%")
 st.divider()
 
 # 이전 턴의 결과 출력
 if event.get("이전_선택_결과"):
-    st.info(f"📋 **이전 지시 결과:** {event['이전_선택_결과']}")
+    st.info(f"📋 **[결재 완료] 이전 지시 결과:**\n\n{event['이전_선택_결과']}")
 
 # 게임 종료 조건 체크
 if status['공정률'] >= 100:
@@ -94,7 +133,8 @@ elif status['예산'] <= 0 or status['안전도'] <= 0 or status['품질'] <= 0:
 
 # 현재 상황 및 선택지 진행
 if not st.session_state.game_over:
-    st.warning(f"⚠️ **발생 상황:** {event['발생_상황']}")
+    # 예쁘게 꾸민 발생 상황 박스
+    st.markdown(f"<div class='situation-box'>⚠️ <b>긴급 보고:</b><br>{event['발생_상황']}</div>", unsafe_allow_html=True)
     
     choice_options = []
     for key, val in event["선택지"].items():
@@ -102,43 +142,43 @@ if not st.session_state.game_over:
     
     selected_option = st.radio("소장님, 어떤 지시를 내리시겠습니까?", choice_options, index=None)
     
-    if st.button("지시 내리기 👷‍♂️"):
-        if selected_option:
-            with st.spinner("현장 지시 사항을 반영 중입니다..."):
-                # 일지 기록
-                st.session_state.history_data.append({
-                    "Turn": st.session_state.turn_count,
-                    "Budget": status['예산'], 
-                    "Safety": status['안전도'], 
-                    "Quality": status['품질'], 
-                    "Progress": status['공정률'],
-                    "Event": event['발생_상황'], 
-                    "Player_Choice": selected_option[0]
-                })
-                
-                # 공정 단계 계산
-                current_progress = status['공정률']
-                if current_progress < 20:
-                    phase = "가설 및 토공사/기초공사 단계"
-                elif current_progress < 60:
-                    phase = "지상층 철근/거푸집/콘크리트 골조공사 단계"
-                elif current_progress < 90:
-                    phase = "내외부 방수 및 마감공사 단계"
-                else:
-                    phase = "준공 전 펀치리스트 및 최종 점검 단계"
+    # 지시 내리기 버튼을 좀 더 눈에 띄게 배치
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("👷‍♂️ 현장 지시 내리기", use_container_width=True):
+            if selected_option:
+                with st.spinner("현장 지시 사항을 반영 중입니다..."):
+                    st.session_state.history_data.append({
+                        "Turn": st.session_state.turn_count,
+                        "Budget": status['예산'], 
+                        "Safety": status['안전도'], 
+                        "Quality": status['품질'], 
+                        "Progress": status['공정률'],
+                        "Event": event['발생_상황'], 
+                        "Player_Choice": selected_option[0]
+                    })
+                    
+                    current_progress = status['공정률']
+                    if current_progress < 20:
+                        phase = "가설 및 토공사/기초공사 단계"
+                    elif current_progress < 60:
+                        phase = "지상층 철근/거푸집/콘크리트 골조공사 단계"
+                    elif current_progress < 90:
+                        phase = "내외부 방수 및 마감공사 단계"
+                    else:
+                        phase = "준공 전 펀치리스트 및 최종 점검 단계"
 
-                # 스포일러 없는 다음 상황 요청
-                prompt = f"소장은 [{selected_option[0]}]를 선택했어. 결과를 계산해서 공정률을 올려줘. 다음 상황은 [{phase}]에 맞는 리얼한 현장 상황으로 줘."
-                
-                try:
-                    res = st.session_state.chat_session.send_message(prompt)
-                    st.session_state.current_event = json.loads(res.text)
-                    st.session_state.turn_count += 1
-                    st.rerun() 
-                except Exception as e:
-                    st.error(f"오류가 발생했습니다: {e}")
-        else:
-            st.warning("선택지를 골라주세요!")
+                    prompt = f"소장은 [{selected_option[0]}]를 선택했어. 결과를 계산해서 공정률을 올려줘. 다음 상황은 [{phase}]에 맞는 리얼한 현장 상황으로 줘."
+                    
+                    try:
+                        res = st.session_state.chat_session.send_message(prompt)
+                        st.session_state.current_event = json.loads(res.text)
+                        st.session_state.turn_count += 1
+                        st.rerun() 
+                    except Exception as e:
+                        st.error(f"오류가 발생했습니다: {e}")
+            else:
+                st.warning("선택지를 먼저 골라주세요!")
 
 # 6. 하단 현장 일지 (Pandas 데이터프레임)
 st.divider()
