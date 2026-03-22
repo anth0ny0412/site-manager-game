@@ -22,10 +22,22 @@ generation_config = {
 }
 
 system_instruction = """
-너는 현실적이고 엄격한 '건설 현장 시뮬레이터'야. 플레이어는 이제 막 부임한 현장 소장이다.
+너는 현실적이고 엄격한 '건설 현장 시뮬레이터'야. 플레이어는 현장 소장이다.
 [초기 상태] 예산: 100점, 안전도: 100점, 품질: 100점, 공정률: 0%
-[진행 방식] 콘크리트 타설, 거푸집, 철근 배근, 방수 공사 등 실제 현장 이슈를 다뤄. 3가지 선택지(A, B, C)를 줘.
-[출력 규칙] 반드시 주어진 JSON 포맷("이전_선택_결과", "현재_상태", "발생_상황", "선택지")으로만 출력해. 다른 부연 설명은 절대 하지 마.
+[진행 방식] 
+반드시 플레이어가 전달하는 '현재 공정 단계'에 맞춰서 실제 현장 이슈를 발생시켜야 해.
+- 토공사/기초 (0~20%): 흙막이 붕괴 우려, 파일 항타 소음 민원, 지하수 용출 등
+- 골조공사 (21~60%): 철근 배근 간격 불량, 거푸집 동바리 좌굴 우려, 콘크리트 타설 후 컬링(Curling) 현상, 피복 두께 부족 등
+- 마감공사 (61~90%): 방수층 들뜸, 조적/미장 크랙, 설비 배관 간섭 등
+- 준공준비 (91~100%): 펀치리스트(미비점) 발생, 발주처 품질 지적 등
+
+[출력 규칙] 반드시 아래 JSON 포맷으로만 출력해.
+{
+  "이전_선택_결과": "플레이어의 선택으로 인한 점수 증감과 현장 상황 변화 설명",
+  "현재_상태": {"예산": 0, "안전도": 0, "품질": 0, "공정률": 0},
+  "발생_상황": "현재 공정 단계에 맞는 새롭고 구체적인 현장 딜레마",
+  "선택지": {"A": "행동과 리스크", "B": "행동과 리스크", "C": "행동과 리스크"}
+}
 """
 
 @st.cache_resource
@@ -86,11 +98,11 @@ if not st.session_state.game_over:
     
     selected_option = st.radio("소장님, 어떤 지시를 내리시겠습니까?", choice_options, index=None)
     
-    # 지시 내리기 버튼
+   # 지시 내리기 버튼
     if st.button("지시 내리기 👷‍♂️"):
         if selected_option:
             with st.spinner("현장 지시 사항을 반영 중입니다..."):
-                # 현재 상태를 기록 (Pandas 표를 위해)
+                # 현재 상태를 기록
                 st.session_state.history_data.append({
                     "Turn": st.session_state.turn_count,
                     "Budget": status['예산'], 
@@ -98,15 +110,28 @@ if not st.session_state.game_over:
                     "Quality": status['품질'], 
                     "Progress": status['공정률'],
                     "Event": event['발생_상황'], 
-                    "Player_Choice": selected_option[0] # A, B, C 중 하나
+                    "Player_Choice": selected_option[0]
                 })
                 
-                # AI에게 소장님의 선택(A, B, C) 전달하고 다음 상황 받기
+                # 💡 핵심: 공정률에 따른 현재 시공 단계 계산
+                current_progress = status['공정률']
+                if current_progress < 20:
+                    phase = "가설 및 토공사/기초공사 단계"
+                elif current_progress < 60:
+                    phase = "지상층 철근/거푸집/콘크리트 골조공사 단계"
+                elif current_progress < 90:
+                    phase = "내외부 방수 및 마감공사 단계"
+                else:
+                    phase = "준공 전 펀치리스트 및 최종 점검 단계"
+
+                # AI에게 선택지와 함께 '현재 공정 단계'를 강력하게 주입하여 질문 요청
+                prompt = f"소장은 [{selected_option[0]}]를 선택했어. 이 선택의 결과를 계산해서 공정률을 올려줘. 그리고 다음 상황은 반드시 [{phase}]에 맞는 리얼한 현장 상황으로 제시해."
+                
                 try:
-                    res = st.session_state.chat_session.send_message(selected_option[0])
+                    res = st.session_state.chat_session.send_message(prompt)
                     st.session_state.current_event = json.loads(res.text)
                     st.session_state.turn_count += 1
-                    st.rerun() # 화면 새로고침하여 다음 턴 표시
+                    st.rerun() 
                 except Exception as e:
                     st.error(f"오류가 발생했습니다: {e}")
         else:
