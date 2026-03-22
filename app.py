@@ -74,73 +74,100 @@ cols[2].metric("🏢 품질", f"{status['품질']}점")
 cols[3].metric("📈 공정률", f"{status['공정률']}%")
 st.divider()
 
-# 이전 턴의 결과 출력
-if event.get("이전_선택_결과"):
-    st.info(f"📋 **이전 지시 결과:** {event['이전_선택_결과']}")
+# 💡 화면을 좌우로 분할 (비율 6:4)
+left_col, right_col = st.columns([6, 4])
 
-# 게임 종료 조건 체크
-if status['공정률'] >= 100:
-    st.success("🎉 무사히 준공을 마쳤습니다! 훌륭한 소장님이십니다!")
-    st.balloons()
-    st.session_state.game_over = True
-elif status['예산'] <= 0 or status['안전도'] <= 0 or status['품질'] <= 0:
-    st.error("🚨 현장에 심각한 문제가 발생하여 소장 자리에서 해임되었습니다. 게임 오버!")
-    st.session_state.game_over = True
+# --- [오른쪽 화면: 현장 CCTV 사진] ---
+with right_col:
+    st.subheader("📷 현장 CCTV")
+    progress = status['공정률']
+    
+    # 공정률에 따라 다른 이미지 URL 연결
+    if progress < 20:
+        # 터파기, 흙막이, 기초 공사 이미지
+        img_url = "https://images.unsplash.com/photo-1504307651254-35680f356f12?w=600&q=80" 
+        caption = "🚧 가설 및 토공사 진행 중"
+    elif progress < 60:
+        # 철근, 거푸집, 타설 등 골조 공사 이미지
+        img_url = "https://images.unsplash.com/photo-1541888086425-d81bb19240f5?w=600&q=80" 
+        caption = "🏗️ 골조 및 콘크리트 공사 진행 중"
+    elif progress < 90:
+        # 외벽, 유리, 마감 공사 이미지
+        img_url = "https://images.unsplash.com/photo-1589939705384-5185137a7f0f?w=600&q=80" 
+        caption = "🏢 마감 및 방수 공사 진행 중"
+    else:
+        # 완공된 멋진 빌딩 이미지
+        img_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=600&q=80" 
+        caption = "🎉 준공 완료!"
+        
+    st.image(img_url, caption=caption, use_column_width=True)
 
-# 현재 상황 및 선택지 진행 (게임이 끝나지 않았을 때만 표시)
-if not st.session_state.game_over:
-    st.warning(f"⚠️ **발생 상황:** {event['발생_상황']}")
-    
-    # 선택지를 라디오 버튼으로 예쁘게 구성
-    choice_options = []
-    for key, val in event["선택지"].items():
-        choice_options.append(f"{key}: {val}")
-    
-    selected_option = st.radio("소장님, 어떤 지시를 내리시겠습니까?", choice_options, index=None)
-    
-   # 지시 내리기 버튼
-    if st.button("지시 내리기 👷‍♂️"):
-        if selected_option:
-            with st.spinner("현장 지시 사항을 반영 중입니다..."):
-                # 현재 상태를 기록
-                st.session_state.history_data.append({
-                    "Turn": st.session_state.turn_count,
-                    "Budget": status['예산'], 
-                    "Safety": status['안전도'], 
-                    "Quality": status['품질'], 
-                    "Progress": status['공정률'],
-                    "Event": event['발생_상황'], 
-                    "Player_Choice": selected_option[0]
-                })
-                
-                # 💡 핵심: 공정률에 따른 현재 시공 단계 계산
-                current_progress = status['공정률']
-                if current_progress < 20:
-                    phase = "가설 및 토공사/기초공사 단계"
-                elif current_progress < 60:
-                    phase = "지상층 철근/거푸집/콘크리트 골조공사 단계"
-                elif current_progress < 90:
-                    phase = "내외부 방수 및 마감공사 단계"
-                else:
-                    phase = "준공 전 펀치리스트 및 최종 점검 단계"
+# --- [왼쪽 화면: 상황 보고 및 지시 내리기] ---
+with left_col:
+    # 이전 턴의 결과 출력
+    if event.get("이전_선택_결과"):
+        st.info(f"📋 **이전 지시 결과:** {event['이전_선택_결과']}")
 
-                # AI에게 선택지와 함께 '현재 공정 단계'를 강력하게 주입하여 질문 요청
-                prompt = f"소장은 [{selected_option[0]}]를 선택했어. 이 선택의 결과를 계산해서 공정률을 올려줘. 그리고 다음 상황은 반드시 [{phase}]에 맞는 리얼한 현장 상황으로 제시해."
-                
-                try:
-                    res = st.session_state.chat_session.send_message(prompt)
-                    st.session_state.current_event = json.loads(res.text)
-                    st.session_state.turn_count += 1
-                    st.rerun() 
-                except Exception as e:
-                    st.error(f"오류가 발생했습니다: {e}")
-        else:
-            st.warning("선택지를 골라주세요!")
+    # 게임 종료 조건 체크
+    if status['공정률'] >= 100:
+        st.success("🎉 무사히 준공을 마쳤습니다! 훌륭한 소장님이십니다!")
+        st.balloons()
+        st.session_state.game_over = True
+    elif status['예산'] <= 0 or status['안전도'] <= 0 or status['품질'] <= 0:
+        st.error("🚨 현장에 심각한 문제가 발생하여 소장 자리에서 해임되었습니다. 게임 오버!")
+        st.session_state.game_over = True
+
+    # 현재 상황 및 선택지 진행
+    if not st.session_state.game_over:
+        st.warning(f"⚠️ **발생 상황:** {event['발생_상황']}")
+        
+        choice_options = []
+        for key, val in event["선택지"].items():
+            choice_options.append(f"{key}: {val}")
+        
+        selected_option = st.radio("소장님, 어떤 지시를 내리시겠습니까?", choice_options, index=None)
+        
+        if st.button("지시 내리기 👷‍♂️"):
+            if selected_option:
+                with st.spinner("현장 지시 사항을 반영 중입니다..."):
+                    # 일지 기록
+                    st.session_state.history_data.append({
+                        "Turn": st.session_state.turn_count,
+                        "Budget": status['예산'], 
+                        "Safety": status['안전도'], 
+                        "Quality": status['품질'], 
+                        "Progress": status['공정률'],
+                        "Event": event['발생_상황'], 
+                        "Player_Choice": selected_option[0]
+                    })
+                    
+                    # 공정 단계 계산
+                    current_progress = status['공정률']
+                    if current_progress < 20:
+                        phase = "가설 및 토공사/기초공사 단계"
+                    elif current_progress < 60:
+                        phase = "지상층 철근/거푸집/콘크리트 골조공사 단계"
+                    elif current_progress < 90:
+                        phase = "내외부 방수 및 마감공사 단계"
+                    else:
+                        phase = "준공 전 펀치리스트 및 최종 점검 단계"
+
+                    prompt = f"소장은 [{selected_option[0]}]를 선택했어. 결과를 계산해서 공정률을 올려줘. 다음 상황은 [{phase}]에 맞는 리얼한 현장 상황으로 줘."
+                    
+                    try:
+                        res = st.session_state.chat_session.send_message(prompt)
+                        st.session_state.current_event = json.loads(res.text)
+                        st.session_state.turn_count += 1
+                        st.rerun() 
+                    except Exception as e:
+                        st.error(f"오류가 발생했습니다: {e}")
+            else:
+                st.warning("선택지를 골라주세요!")
 
 # 6. 하단 현장 일지 (Pandas 데이터프레임 시각화)
+st.divider()
 with st.expander("📊 소장님 업무 일지 (데이터 기록 확인)"):
     if st.session_state.history_data:
-        # 딕셔너리 리스트를 Pandas DataFrame으로 변환하여 출력
         df = pd.DataFrame(st.session_state.history_data)
         st.dataframe(df, use_container_width=True)
     else:
